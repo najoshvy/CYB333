@@ -1,0 +1,103 @@
+import re
+import time
+from datetime import datetime
+from collections import defaultdict
+
+class SimpleIDS:
+    def __init__(self, log_file=None):
+        self.log_file = log_file
+        self.alerts = []
+        self.suspicious_patterns = {
+            'failed_login': r'failed password|authentication failure|invalid user',
+            'port_scan': r'Connection attempt|port scan detected',
+            'sql_injection': r'(\bUNION\b|\bSELECT\b|\bINSERT\b)',
+            'brute_force': r'multiple failed attempts',
+            'privilege_escalation': r'sudo:|su\[|elevation',
+        }
+        self.failed_attempts = defaultdict(int)
+        self.threshold = 5
+
+    def check_log_entry(self, log_entry):
+        """Analyze a log entry for suspicious patterns."""
+        detections = []
+        
+        for threat_type, pattern in self.suspicious_patterns.items():
+            if re.search(pattern, log_entry, re.IGNORECASE):
+                detections.append(threat_type)
+        
+        return detections
+
+    def detect_brute_force(self, ip_address):
+        """Track failed attempts per IP."""
+        self.failed_attempts[ip_address] += 1
+        
+        if self.failed_attempts[ip_address] >= self.threshold:
+            return True
+        return False
+
+    def generate_alert(self, threat_type, log_entry, severity="MEDIUM"):
+        """Create an alert for suspicious activity."""
+        alert = {
+            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'threat_type': threat_type,
+            'severity': severity,
+            'log_entry': log_entry[:100],
+        }
+        self.alerts.append(alert)
+        return alert
+
+    def monitor_log(self, file_path):
+        """Monitor a log file in real-time."""
+        try:
+            with open(file_path, 'r') as f:
+                f.seek(0, 2)  # Go to end of file
+                print(f"[*] Monitoring {file_path}...")
+                
+                while True:
+                    line = f.readline()
+                    if line:
+                        detections = self.check_log_entry(line)
+                        for threat in detections:
+                            alert = self.generate_alert(threat, line)
+                            self.print_alert(alert)
+                    time.sleep(0.5)
+        except FileNotFoundError:
+            print(f"[!] Log file not found: {file_path}")
+
+    def analyze_batch(self, log_entries):
+        """Analyze multiple log entries at once."""
+        for entry in log_entries:
+            detections = self.check_log_entry(entry)
+            for threat in detections:
+                alert = self.generate_alert(threat, entry)
+                self.print_alert(alert)
+
+    def print_alert(self, alert):
+        """Display alert in console."""
+        print(f"\n[ALERT] {alert['timestamp']} | Severity: {alert['severity']}")
+        print(f"Threat: {alert['threat_type'].upper()}")
+        print(f"Details: {alert['log_entry']}")
+
+    def get_alerts(self):
+        """Return all detected alerts."""
+        return self.alerts
+
+
+# Example usage
+if __name__ == "__main__":
+    ids = SimpleIDS()
+    
+    # Sample log entries
+    sample_logs = [
+        "2024-01-15 10:23:45 Failed password for invalid user admin from 192.168.1.100",
+        "2024-01-15 10:24:12 User john logged in successfully",
+        "2024-01-15 10:25:33 Connection attempt on port 22 detected",
+        "2024-01-15 10:26:01 sudo: user executed privileged command",
+        "2024-01-15 10:27:15 SELECT * FROM users WHERE id=1 UNION SELECT NULL",
+    ]
+    
+    # Analyze logs
+    ids.analyze_batch(sample_logs)
+    
+    # Print summary
+    print(f"\n[*] Total alerts generated: {len(ids.get_alerts())}")
